@@ -134,7 +134,7 @@ function markdown(lines) {
         })
         out += text + '\n'
     })
-    fs.writeFileSync('users.txt', out)
+    fs.writeFileSync('users.md', out)
 
     lines.sort((a, b) => {
         return b.entries.length - a.entries.length
@@ -146,7 +146,7 @@ function markdown(lines) {
         let text = `${place}. ${place} место: [${line.name}](${line.url}) ${line.entries.length} постов \n`
         out += text
     })
-    fs.writeFileSync('posts.txt', out)
+    fs.writeFileSync('posts.md', out)
 
     lines.sort((a, b) => {
         return Object.keys(b.donators).length - Object.keys(a.donators).length
@@ -158,7 +158,7 @@ function markdown(lines) {
         let text = `${place}. ${place} место: [${line.name}](${line.url}) ${Object.keys(line.donators).length} донатеров \n`
         out += text
     })
-    fs.writeFileSync('donators.txt', out)
+    fs.writeFileSync('donators.md', out)
     entries.sort((a, b) => {
         return b.value - a.value
     })
@@ -169,19 +169,17 @@ function markdown(lines) {
         let text = `${place}. ${place} место: [${entry.title}](${entry.url}) ${entry.value}₽ \n`
         out += text
     })
-    fs.writeFileSync('entries.txt', out)
+    fs.writeFileSync('entries.md', out)
 }
 
 let past = new Date()
-past.setDate(24)
+past.setDate(1)
 past.setHours(0)
 past.setMinutes(0)
 past.setSeconds(0)
 past.setMilliseconds(0)
 console.log('месяц')
 getPanhandlers(past, monthURL).then((panhandlers) => {
-    past = new Date()
-    past.setMonth(past.getMonth() - 3)
     markdown(panhandlers)
     //console.log('3 мес')
     //getPanhandlers(past, threeMonthsURL).then((panhandlers) => {
