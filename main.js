@@ -1,5 +1,7 @@
 import fetch from "node-fetch"
 import jsdom from "jsdom"
+import fs from "fs"
+
 const {JSDOM} = jsdom
 
 const monthURL = 'https://dtf.ru/rating?mode=ajax'
@@ -28,22 +30,45 @@ async function getPanhandlers(date, URL) {
             comments = (await comments.json()).result
             if (comments.length === 0) actualComments = false
             const commentPromises = comments.map(async (comment) => {
-                const {dateRFC, entry, donate} = comment
-                const {author} = entry
+                const {dateRFC, donate} = comment
+                const entryBase = comment.entry
+                const {author} = entryBase
+                if (entryBase.title === '') entryBase.title = 'Безымяный пост'
                 author.value = 0
+                author.entries = []
+                author.donators = {}
                 const commentDate = new Date(dateRFC)
                 if (date > commentDate) actualComments = false
-                const entryId = entry.id
+                const entryId = entryBase.id
                 if (!actualComments || !donate || watchedEntries.includes(entryId)) return author
                 if (donate) {
+
                     watchedEntries.push(entryId)
                     let entry = await fetch(`https://api.dtf.ru/v1.9/entry/${entryId}/comments`)
                     //console.log(watchedEntries)
                     entry = (await entry.json()).result
                     entry.forEach(entryComment => {
                         if (entryComment.donate) {
-                            //author.entry = entry
+
+
+                            if (author.entries.length) author.entries[0].value += entryComment.donate.count
+                            else author.entries = [{
+                                id: entryBase.id,
+                                url: entryBase.url,
+                                title: entryBase.title,
+                                value: entryComment.donate.count
+                            }]
                             author.value += entryComment.donate.count
+
+                            if (!(entryComment.author.id in author.donators)) {
+                                author.donators[entryComment.author.id] = {
+                                    name: entryComment.author.name,
+                                    value: entryComment.donate.count
+                                }
+                            } else {
+                                author.donators[entryComment.author.id].value += entryComment.donate.count
+                            }
+
                         }
                     }) // outdated?
 
@@ -52,6 +77,7 @@ async function getPanhandlers(date, URL) {
             })
             const newAuthors = (await Promise.all(commentPromises)).filter(author => author.value > 0)
             thisAuthors = thisAuthors.concat(newAuthors)
+
 
         }
         return thisAuthors
@@ -65,6 +91,14 @@ async function getPanhandlers(date, URL) {
                 authors[id] = author
             } else {
                 authors[id].value += author.value
+                authors[id].entries = authors[id].entries.concat(author.entries)
+                for (const [key, donator] of Object.entries(author.donators)) {
+                    if (!(key in authors[id].donators)) {
+                        authors[id].donators[key] = donator
+                    } else {
+                        authors[id].donators[key].value += donator.value
+                    }
+                }
             }
             delete author.id
             delete author.type
@@ -79,16 +113,67 @@ async function getPanhandlers(date, URL) {
     return Object.entries(authors).sort(([, a], [, b]) => b.value - a.value).map(obj => obj[1])
 }
 
-function markdown(lines){
+function markdown(lines) {
+    let entries = []
     let place = 0
+    let out = ''
+    lines.forEach(line => {
+        entries = entries.concat(line.entries)
+        //console.log(line)
+        place += 1
+        let text = `${place}. ${place} место: [${line.name}](${line.url}) ${line.value}₽. Посты с донатом: `
+        let i = 1
+        line.entries.forEach(entry => {
+            text += `[Пост${i}: ${entry.value}₽](${entry.url}) `
+            i++
+        })
+        text += ". Донатеры: "
+        Object.values(line.donators).forEach(donator => {
+            text += `${donator.name}: ${donator.value}₽ `
+
+        })
+        out += text + '\n'
+    })
+    fs.writeFileSync('users.txt', out)
+
+    lines.sort((a, b) => {
+        return b.entries.length - a.entries.length
+    })
+    place = 0
+    out = ''
     lines.forEach(line => {
         place += 1
-        console.log(`${place}. ${place} место: [${line.name}](${line.url}) ${line.value} ₽`)
+        let text = `${place}. ${place} место: [${line.name}](${line.url}) ${line.entries.length} постов \n`
+        out += text
     })
+    fs.writeFileSync('posts.txt', out)
+
+    lines.sort((a, b) => {
+        return Object.keys(b.donators).length - Object.keys(a.donators).length
+    })
+    place = 0
+    out = ''
+    lines.forEach(line => {
+        place += 1
+        let text = `${place}. ${place} место: [${line.name}](${line.url}) ${Object.keys(line.donators).length} донатеров \n`
+        out += text
+    })
+    fs.writeFileSync('donators.txt', out)
+    entries.sort((a, b) => {
+        return b.value - a.value
+    })
+    place = 0
+    out = ''
+    entries.forEach(entry => {
+        place += 1
+        let text = `${place}. ${place} место: [${entry.title}](${entry.url}) ${entry.value}₽ \n`
+        out += text
+    })
+    fs.writeFileSync('entries.txt', out)
 }
 
 let past = new Date()
-past.setDate(1)
+past.setDate(24)
 past.setHours(0)
 past.setMinutes(0)
 past.setSeconds(0)
@@ -98,13 +183,13 @@ getPanhandlers(past, monthURL).then((panhandlers) => {
     past = new Date()
     past.setMonth(past.getMonth() - 3)
     markdown(panhandlers)
-    console.log('3 мес')
-    getPanhandlers(past, threeMonthsURL).then((panhandlers) => {
-        markdown(panhandlers)
-        past = new Date()
-        past.setMonth(past.getMonth() - 12)
-        console.log('год')
-        //getPanhandlers(past, allURL).then(() => { IP BAN
-        //})
-    })
+    //console.log('3 мес')
+    //getPanhandlers(past, threeMonthsURL).then((panhandlers) => {
+    //  markdown(panhandlers)
+    // past = new Date()
+    // past.setMonth(past.getMonth() - 12)
+    //console.log('год')
+    //getPanhandlers(past, allURL).then(() => { IP BAN
+    //})
+    //})
 })
